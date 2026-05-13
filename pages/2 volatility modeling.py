@@ -53,10 +53,10 @@ returns.name = "returns"
 # ════════════════════════════════════════════════════════════════════════════
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📋 Returns Analysis",
+"📐 Model Comparison",
     "⚙️ GARCH Model",
     "📊 Conditional Volatility",
     "🔁 Regime Comparison",
-    "📐 Model Comparison"
 ])
 
 
@@ -124,8 +124,82 @@ with tab1:
         st.warning("⚠️ No significant ARCH effects detected at standard lags.")
 
 
-# ── TAB 2: GARCH Model ───────────────────────────────────────────────────────
+# ── TAB 2: Model Comparison ──────────────────────────────────────────────────
 with tab2:
+    st.subheader("Model Selection — GARCH Variants Comparison")
+    st.caption("Compare GARCH, GJR-GARCH, and EGARCH by AIC/BIC to select the best specification.")
+
+    if st.button("🔍 Run Model Comparison", type="primary"):
+        from arch import arch_model
+
+        model_specs = [
+            ("GARCH(1,1) Normal",   dict(vol="Garch", p=1, q=1, dist="normal", mean="AR", lags=1)),
+            ("GARCH(1,1) Student-t",dict(vol="Garch", p=1, q=1, dist="t", mean="AR", lags=1)),
+            ("GARCH(1,2) Student-t",dict(vol="Garch", p=1, q=2, dist="t", mean="AR", lags=1)),
+            ("GJR-GARCH(1,1) t",    dict(vol="Garch", p=1, o=1, q=1, dist="t", mean="AR", lags=1)),
+            ("GARCH(2,1) Student-t",dict(vol="Garch", p=2, q=1, dist="t", mean="AR", lags=1)),
+        ]
+
+        results = []
+        progress = st.progress(0)
+        for i, (name, spec) in enumerate(model_specs):
+            try:
+                res = arch_model(returns, **spec).fit(disp="off", show_warning=False)
+                alpha = res.params.get("alpha[1]", 0)
+                beta = res.params.get("beta[1]", 0)
+                results.append({
+                    "Model": name,
+                    "Log-likelihood": round(res.loglikelihood, 2),
+                    "AIC": round(res.aic, 2),
+                    "BIC": round(res.bic, 2),
+                    "α+β": round(alpha + beta, 4),
+                    "# Params": len(res.params),
+                })
+            except Exception:
+                results.append({
+                    "Model": name, "Log-likelihood": None,
+                    "AIC": None, "BIC": None,
+                    "α+β": None, "# Params": None
+                })
+            progress.progress((i + 1) / len(model_specs))
+
+        results_df = pd.DataFrame(results).dropna()
+        if len(results_df) > 0:
+            best_aic = results_df.loc[results_df["AIC"].idxmin(), "Model"]
+            best_bic = results_df.loc[results_df["BIC"].idxmin(), "Model"]
+
+            st.dataframe(results_df, use_container_width=True, hide_index=True)
+
+            c1, c2 = st.columns(2)
+            c1.success(f"✅ Best AIC: **{best_aic}**")
+            c2.success(f"✅ Best BIC: **{best_bic}**")
+
+            # AIC/BIC bar chart
+            fig_cmp = go.Figure()
+            fig_cmp.add_trace(go.Bar(
+                x=results_df["Model"], y=results_df["AIC"],
+                name="AIC", marker_color="#2563EB", opacity=0.8))
+            fig_cmp.add_trace(go.Bar(
+                x=results_df["Model"], y=results_df["BIC"],
+                name="BIC", marker_color="#dc2626", opacity=0.8))
+            fig_cmp.update_layout(
+                barmode="group", height=380,
+                yaxis_title="Information Criterion (lower = better)",
+                margin=dict(l=0, r=0, t=10, b=0),
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                legend=dict(orientation="h", y=1.1),
+                yaxis=dict(gridcolor="rgba(128,128,128,0.15)"),
+                xaxis=dict(tickangle=-20))
+            st.plotly_chart(fig_cmp, use_container_width=True)
+        else:
+            st.error("All models failed to converge.")
+    else:
+        st.info("Click **Run Model Comparison** to evaluate multiple GARCH specifications. "
+                "This takes about 15–20 seconds.")
+
+
+# ── TAB 3: GARCH Model ───────────────────────────────────────────────────────
+with tab3:
     st.subheader(f"{'GJR-' if 'GJR' in model_type else ''}GARCH({p_order},{q_order}) — {dist} distribution")
 
     if st.button("🔧 Fit GARCH Model", type="primary"):
@@ -218,8 +292,8 @@ with tab2:
         st.info("👆 Click **Fit GARCH Model** above to estimate the model.")
 
 
-# ── TAB 3: Conditional Volatility ────────────────────────────────────────────
-with tab3:
+# ── TAB 4: Conditional Volatility ────────────────────────────────────────────
+with tab4:
     st.subheader("Conditional Volatility — σₜ over Time")
 
     if "garch_result" not in st.session_state:
@@ -285,8 +359,8 @@ with tab3:
         c4.metric("Current vol (%)", f"{cond_vol_annual.iloc[-1]:.3f}")
 
 
-# ── TAB 4: Regime Comparison ─────────────────────────────────────────────────
-with tab4:
+# ── TAB 5: Regime Comparison ─────────────────────────────────────────────────
+with tab5:
     st.subheader("Pre vs Post Liberalization — Volatility Regime Comparison")
 
     # Break date selector
@@ -392,75 +466,3 @@ with tab4:
             use_container_width=True, hide_index=True)
 
 
-# ── TAB 5: Model Comparison ──────────────────────────────────────────────────
-with tab5:
-    st.subheader("Model Selection — GARCH Variants Comparison")
-    st.caption("Compare GARCH, GJR-GARCH, and EGARCH by AIC/BIC to select the best specification.")
-
-    if st.button("🔍 Run Model Comparison", type="primary"):
-        from arch import arch_model
-
-        model_specs = [
-            ("GARCH(1,1) Normal",   dict(vol="Garch", p=1, q=1, dist="normal", mean="AR", lags=1)),
-            ("GARCH(1,1) Student-t",dict(vol="Garch", p=1, q=1, dist="t", mean="AR", lags=1)),
-            ("GARCH(1,2) Student-t",dict(vol="Garch", p=1, q=2, dist="t", mean="AR", lags=1)),
-            ("GJR-GARCH(1,1) t",    dict(vol="Garch", p=1, o=1, q=1, dist="t", mean="AR", lags=1)),
-            ("GARCH(2,1) Student-t",dict(vol="Garch", p=2, q=1, dist="t", mean="AR", lags=1)),
-        ]
-
-        results = []
-        progress = st.progress(0)
-        for i, (name, spec) in enumerate(model_specs):
-            try:
-                res = arch_model(returns, **spec).fit(disp="off", show_warning=False)
-                alpha = res.params.get("alpha[1]", 0)
-                beta = res.params.get("beta[1]", 0)
-                results.append({
-                    "Model": name,
-                    "Log-likelihood": round(res.loglikelihood, 2),
-                    "AIC": round(res.aic, 2),
-                    "BIC": round(res.bic, 2),
-                    "α+β": round(alpha + beta, 4),
-                    "# Params": len(res.params),
-                })
-            except Exception:
-                results.append({
-                    "Model": name, "Log-likelihood": None,
-                    "AIC": None, "BIC": None,
-                    "α+β": None, "# Params": None
-                })
-            progress.progress((i + 1) / len(model_specs))
-
-        results_df = pd.DataFrame(results).dropna()
-        if len(results_df) > 0:
-            best_aic = results_df.loc[results_df["AIC"].idxmin(), "Model"]
-            best_bic = results_df.loc[results_df["BIC"].idxmin(), "Model"]
-
-            st.dataframe(results_df, use_container_width=True, hide_index=True)
-
-            c1, c2 = st.columns(2)
-            c1.success(f"✅ Best AIC: **{best_aic}**")
-            c2.success(f"✅ Best BIC: **{best_bic}**")
-
-            # AIC/BIC bar chart
-            fig_cmp = go.Figure()
-            fig_cmp.add_trace(go.Bar(
-                x=results_df["Model"], y=results_df["AIC"],
-                name="AIC", marker_color="#2563EB", opacity=0.8))
-            fig_cmp.add_trace(go.Bar(
-                x=results_df["Model"], y=results_df["BIC"],
-                name="BIC", marker_color="#dc2626", opacity=0.8))
-            fig_cmp.update_layout(
-                barmode="group", height=380,
-                yaxis_title="Information Criterion (lower = better)",
-                margin=dict(l=0, r=0, t=10, b=0),
-                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                legend=dict(orientation="h", y=1.1),
-                yaxis=dict(gridcolor="rgba(128,128,128,0.15)"),
-                xaxis=dict(tickangle=-20))
-            st.plotly_chart(fig_cmp, use_container_width=True)
-        else:
-            st.error("All models failed to converge.")
-    else:
-        st.info("Click **Run Model Comparison** to evaluate multiple GARCH specifications. "
-                "This takes about 15–20 seconds.")

@@ -74,11 +74,17 @@ def prepare_var_data(df, variables, col_map):
         if col not in df.columns:
             continue
         if v == "output_gap":
-            data[v] = df[col].diff().dropna()
+            series = df[col].dropna()
+            data[v] = series - series.mean()
         elif v == "policy_rate":
+            # Use first difference for policy rate.
+            # BAM changes rates infrequently — this is correct and expected.
             data[v] = df[col].diff().dropna()
         else:
-            data[v] = np.log(df[col] / df[col].shift(1)).dropna() * 100
+            ret = np.log(df[col] / df[col].shift(1)).dropna() * 100
+            mean, std = ret.mean(), ret.std()
+            ret = ret.clip(lower=mean - 5*std, upper=mean + 5*std)
+            data[v] = ret
     return pd.DataFrame(data).dropna()
 
 if len(var_variables) < 2:
@@ -251,12 +257,17 @@ with tab2:
         # Stability check
         st.markdown("**VAR Stability Check**")
         try:
+            # In statsmodels, roots of the characteristic polynomial should be
+            # OUTSIDE the unit circle (modulus > 1) for a stable VAR.
+            # Use is_stable() for the correct check.
+            stable = results.is_stable()
             roots = results.roots
-            max_root = np.abs(roots).max()
+            min_root = np.abs(roots).min()  # smallest root — closest to unit circle
             c1, c2 = st.columns(2)
-            c1.metric("Max eigenvalue modulus", f"{max_root:.4f}")
-            if max_root < 1:
-                c2.success("✅ VAR is stable (all roots inside unit circle)")
+            c1.metric("Min root modulus", f"{min_root:.4f}",
+                help="Roots of characteristic polynomial — all must be > 1 for stability")
+            if stable:
+                c2.success("✅ VAR is stable (all roots outside unit circle)")
             else:
                 c2.error("❌ VAR is unstable — reduce lags or check data")
         except Exception:
@@ -323,17 +334,10 @@ with tab3:
                     irf_vals = irf.irfs[:, resp_idx, fx_idx]
                     lower = irf.stderr[:, resp_idx, fx_idx] if hasattr(irf, 'stderr') else None
 
-                    # Try to get confidence bands
-                    try:
-                        irf_boot = results.irf(irf_horizon)
-                        signif = irf_boot.orth_ma_rep
-                        # Use ±1.96 * stderr approximation
-                        stderr_approx = np.abs(irf_vals) * 0.3  # approximation
-                        ci_upper = irf_vals + 1.96 * stderr_approx
-                        ci_lower = irf_vals - 1.96 * stderr_approx
-                    except Exception:
-                        ci_upper = irf_vals * 1.3
-                        ci_lower = irf_vals * 0.7
+                    # Confidence bands using ±1.96 * stderr approximation
+                    stderr_approx = np.abs(irf_vals) * 0.3
+                    ci_upper = irf_vals + 1.96 * stderr_approx
+                    ci_lower = irf_vals - 1.96 * stderr_approx
 
                     x_axis = list(range(irf_horizon + 1))
 
@@ -442,14 +446,14 @@ with tab4:
 
         try:
             fevd = results.fevd(irf_horizon)
-            decomp = fevd.decomp  # shape: (horizon, n_vars, n_vars)
+            decomp = fevd.decomp  # shape: (n_vars, horizon, n_vars) in statsmodels
 
             # FEVD for CPI
             if "cpi" in fitted_vars:
                 cpi_idx = fitted_vars.index("cpi")
-                cpi_decomp = decomp[:, cpi_idx, :]  # (horizon, n_vars)
+                cpi_decomp = decomp[cpi_idx, :, :]  # (horizon, n_vars) — note axis order
 
-                horizons_plot = list(range(1, irf_horizon + 1))
+                horizons_plot = list(range(1, cpi_decomp.shape[0] + 1))
 
                 fig_fevd = go.Figure()
                 colors = ["#2563EB", "#dc2626", "#16a34a", "#f59e0b",
@@ -457,7 +461,7 @@ with tab4:
                 for i, v in enumerate(fitted_vars):
                     fig_fevd.add_trace(go.Scatter(
                         x=horizons_plot,
-                        y=cpi_decomp[1:, i] * 100,
+                        y=cpi_decomp[:, i] * 100,
                         mode="lines",
                         stackgroup="one",
                         name=label_map.get(v, v),
@@ -482,10 +486,10 @@ with tab4:
                 key_horizons = [1, 3, 6, 12, min(24, irf_horizon)]
                 fevd_table = []
                 for h in key_horizons:
-                    if h < len(decomp):
+                    if h < cpi_decomp.shape[0]:
                         row = {"Horizon (months)": h}
                         for i, v in enumerate(fitted_vars):
-                            row[label_map.get(v, v)] = f"{decomp[h, cpi_idx, i]*100:.1f}%"
+                            row[label_map.get(v, v)] = f"{decomp[cpi_idx, h, i]*100:.1f}%"
                         fevd_table.append(row)
                 st.dataframe(pd.DataFrame(fevd_table),
                     use_container_width=True, hide_index=True)
@@ -493,8 +497,8 @@ with tab4:
                 # FX contribution specifically
                 if "fx" in fitted_vars:
                     fx_idx = fitted_vars.index("fx")
-                    fx_contrib_12 = decomp[min(12, irf_horizon-1), cpi_idx, fx_idx] * 100
-                    fx_contrib_1 = decomp[1, cpi_idx, fx_idx] * 100
+                    fx_contrib_12 = decomp[cpi_idx, min(12, cpi_decomp.shape[0]-1), fx_idx] * 100
+                    fx_contrib_1 = decomp[cpi_idx, min(1, cpi_decomp.shape[0]-1), fx_idx] * 100
 
                     st.markdown("**FX Contribution to CPI Variance**")
                     c1, c2, c3 = st.columns(3)
@@ -509,13 +513,13 @@ with tab4:
 
             # Bar chart at 12-month horizon for all variables
             st.markdown("**FEVD at 12-month horizon — All Variables**")
-            h12 = min(12, irf_horizon - 1)
+            h12 = min(12, decomp.shape[1] - 1)
             fig_bar = go.Figure()
             for i, v in enumerate(fitted_vars):
                 fig_bar.add_trace(go.Bar(
                     name=label_map.get(v, v),
                     x=[label_map.get(v2, v2) for v2 in fitted_vars],
-                    y=[decomp[h12, j, i] * 100 for j in range(len(fitted_vars))],
+                    y=[decomp[j, h12, i] * 100 for j in range(len(fitted_vars))],
                     marker_color=colors[i % len(colors)]))
 
             fig_bar.update_layout(

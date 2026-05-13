@@ -14,16 +14,8 @@ COUNTRIES = {
 }
 
 REQUIRED_COLUMNS = [
-    "date",
-    "cpi",
-    "policy_rate",
-    "neer",
-    "reer",
-    "fx_usd",
-    "fx_eur",
-    "reserves",
-    "oil_brent",
-    "output_gap",
+    "date", "cpi", "policy_rate", "neer", "reer",
+    "fx_usd", "fx_eur", "reserves", "oil_brent", "output_gap",
 ]
 
 COLUMN_LABELS = {
@@ -40,8 +32,8 @@ COLUMN_LABELS = {
 
 
 @st.cache_data(show_spinner=False)
-def load_country(country: str) -> pd.DataFrame | None:
-    """Load and validate data for a single country."""
+def load_country(country: str):
+    """Load and validate data for a single country with robust date parsing."""
     filename = COUNTRIES.get(country)
     if not filename:
         return None
@@ -51,17 +43,55 @@ def load_country(country: str) -> pd.DataFrame | None:
         return None
 
     try:
-        df = pd.read_csv(filepath, parse_dates=["date"])
-        df = df.sort_values("date").set_index("date")
-        df.index = pd.to_datetime(df.index).to_period("M").to_timestamp()
+        df = pd.read_csv(filepath)
+
+        # Find date column case-insensitively
+        date_col = None
+        for col in df.columns:
+            if col.lower().strip() == "date":
+                date_col = col
+                break
+
+        if date_col is None:
+            st.error(f"No 'date' column found in {filename}. "
+                     f"Columns found: {list(df.columns)}")
+            return None
+
+        # Parse dates flexibly
+        df[date_col] = pd.to_datetime(df[date_col], dayfirst=False, errors="coerce")
+
+        # Rename to lowercase 'date' if needed
+        if date_col != "date":
+            df = df.rename(columns={date_col: "date"})
+
+        # Drop rows where date couldn't be parsed
+        n_bad = df["date"].isna().sum()
+        if n_bad > 0:
+            st.warning(f"{country}: {n_bad} rows with unparseable dates dropped.")
+            df = df.dropna(subset=["date"])
+
+        if len(df) == 0:
+            st.error(f"No valid dates in {filename}. Check format — expected YYYY-MM-DD.")
+            return None
+
+        # Normalize to first of month
+        df = df.sort_values("date")
+        df["date"] = df["date"].dt.to_period("M").dt.to_timestamp()
+        df = df.set_index("date")
+
+        # Convert all columns to numeric
+        for col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
         return df
+
     except Exception as e:
         st.error(f"Error loading {country}: {e}")
         return None
 
 
 @st.cache_data(show_spinner=False)
-def load_all_countries() -> dict[str, pd.DataFrame]:
+def load_all_countries():
     """Load all available country datasets."""
     result = {}
     for country in COUNTRIES:
@@ -71,7 +101,7 @@ def load_all_countries() -> dict[str, pd.DataFrame]:
     return result
 
 
-def get_available_countries() -> list[str]:
+def get_available_countries():
     """Return list of countries that have a CSV file in /data."""
     available = []
     for country, filename in COUNTRIES.items():
@@ -81,11 +111,8 @@ def get_available_countries() -> list[str]:
     return available
 
 
-def validate_dataframe(df: pd.DataFrame, country: str) -> dict:
-    """
-    Validate a dataframe and return a report.
-    Returns dict with: missing_cols, missing_values, date_range, row_count, issues
-    """
+def validate_dataframe(df, country):
+    """Validate a dataframe and return a report."""
     report = {
         "country": country,
         "row_count": len(df),
@@ -95,19 +122,16 @@ def validate_dataframe(df: pd.DataFrame, country: str) -> dict:
         "issues": [],
     }
 
-    # Check for required columns
     for col in REQUIRED_COLUMNS:
         if col != "date" and col not in df.columns:
             report["missing_cols"].append(col)
 
-    # Check for missing values in existing columns
     for col in df.columns:
         n_missing = df[col].isna().sum()
         if n_missing > 0:
             pct = round(n_missing / len(df) * 100, 1)
             report["missing_values"][col] = {"count": n_missing, "pct": pct}
 
-    # Flag issues
     if report["missing_cols"]:
         report["issues"].append(f"Missing columns: {', '.join(report['missing_cols'])}")
     if len(df) < 60:
@@ -120,13 +144,15 @@ def validate_dataframe(df: pd.DataFrame, country: str) -> dict:
     return report
 
 
-def compute_returns(df: pd.DataFrame, col: str) -> pd.Series:
+def compute_returns(df, col):
     """Compute log returns for a given column."""
-    return (df[col] / df[col].shift(1)).apply(lambda x: x if pd.isna(x) else __import__("math").log(x))
+    import math
+    return (df[col] / df[col].shift(1)).apply(
+        lambda x: x if pd.isna(x) else math.log(x))
 
 
-def sidebar_country_selector(default: str = "Morocco") -> str:
-    """Render a country selector in the sidebar and return the selected country."""
+def sidebar_country_selector(default="Morocco"):
+    """Render a country selector in the sidebar."""
     available = get_available_countries()
     if not available:
         st.sidebar.warning("No country data found. Please add CSV files to /data.")
