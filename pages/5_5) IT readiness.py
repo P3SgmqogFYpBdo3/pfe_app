@@ -11,6 +11,9 @@ warnings.filterwarnings("ignore")
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_loader import load_country, load_all_countries, get_available_countries
 
+from utils.style import apply_global_style
+apply_global_style()
+
 st.set_page_config(page_title="IT Readiness Dashboard", page_icon="🎯", layout="wide")
 st.title("🎯 Page 5 — Inflation Targeting Readiness Dashboard")
 st.caption("Composite index evaluating Morocco's readiness to adopt inflation targeting, "

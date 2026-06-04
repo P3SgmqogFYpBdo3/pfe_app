@@ -10,6 +10,9 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_loader import load_country, load_all_countries, sidebar_country_selector, get_available_countries
 
+from utils.style import apply_global_style
+apply_global_style()
+
 st.set_page_config(page_title="Exchange Rate Diagnostics", page_icon="📈", layout="wide")
 st.title("📈 Page 1 — Exchange Rate Diagnostics")
 st.caption("Historical dynamics, structural breaks, rolling statistics, and event analysis.")

@@ -11,6 +11,9 @@ warnings.filterwarnings("ignore")
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_loader import load_country, sidebar_country_selector
 
+from utils.style import apply_global_style
+apply_global_style()
+
 st.set_page_config(page_title="Volatility Modeling", page_icon="📉", layout="wide")
 st.title("📉 Page 2 — Volatility Modeling (GARCH Framework)")
 st.caption("GARCH-based characterization of exchange rate volatility, persistence, and regime comparison.")

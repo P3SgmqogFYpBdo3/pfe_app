@@ -11,6 +11,9 @@ warnings.filterwarnings("ignore")
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_loader import load_country, sidebar_country_selector
 
+from utils.style import apply_global_style
+apply_global_style()
+
 st.set_page_config(page_title="ERPT Analysis", page_icon="📡", layout="wide")
 st.title("📡 Page 4 — Exchange Rate Pass-Through (ERPT) Analysis")
 st.caption("VAR/BVAR model estimating how exchange rate shocks transmit to domestic inflation.")

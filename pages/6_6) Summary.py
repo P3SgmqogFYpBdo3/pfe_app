@@ -13,6 +13,9 @@ warnings.filterwarnings("ignore")
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_loader import load_country, load_all_countries, get_available_countries
 
+from utils.style import apply_global_style
+apply_global_style()
+
 st.set_page_config(page_title="Executive Summary", page_icon="📋", layout="wide")
 st.title("📋 Page 6 — Executive Summary & Export")
 st.caption("Auto-generated findings synthesis across all analyses. Defense-ready report.")
