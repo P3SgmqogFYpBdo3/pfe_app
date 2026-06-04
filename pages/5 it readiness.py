@@ -285,8 +285,8 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("ERPT Override")
 erpt_manual = st.sidebar.number_input(
     "Manual ERPT (if not from Page 4)",
-    min_value=0.0, max_value=2.0,
-    value=float(f"{erpt_from_page4:.4f}") if erpt_from_page4 else 0.25,
+    min_value=-2.0, max_value=2.0,
+    value=float(f"{abs(erpt_from_page4):.4f}") if erpt_from_page4 else 0.25,
     step=0.01)
 erpt_used = erpt_from_page4 if erpt_from_page4 else erpt_manual
 
@@ -334,17 +334,28 @@ with tab1:
 
     categories = pillar_names + [pillar_names[0]]  # close the polygon
 
+
+    def hex_to_rgba(hex_color, alpha=0.12):
+        """Convert hex color to rgba string."""
+        hex_color = hex_color.lstrip("#")
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+        return f"rgba({r},{g},{b},{alpha})"
+
+
     for country in countries_to_show:
         scores = computed_scores[country]
         values = [scores.get(p, 0) for p in pillar_names]
         values_closed = values + [values[0]]
         color = country_colors.get(country, "#888888")
+        fill_color = hex_to_rgba(color, 0.12) if color.startswith("#") else color
 
         fig_radar.add_trace(go.Scatterpolar(
             r=values_closed,
             theta=categories,
             fill="toself",
-            fillcolor=color.replace("#", "rgba(").replace(")", ",0.12)") if "#" in color else color,
+            fillcolor=fill_color,
             line=dict(color=color, width=2.5),
             name=country,
             hovertemplate="<b>%{theta}</b><br>Score: %{r:.2f}/10<extra>" + country + "</extra>"
