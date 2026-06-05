@@ -67,7 +67,7 @@ var_variables = st.sidebar.multiselect(
     default=["fx", "cpi", "policy_rate"],
     help="First variable = most exogenous. Recommended: fx → oil → cpi → rate → reserves → gap")
 
-max_lags = st.sidebar.slider("Max lags for selection", 1, 8, 4)
+max_lags = st.sidebar.slider("Max lags for selection", 1, 12, 12)
 irf_horizon = st.sidebar.slider("IRF horizon (months)", 6, 36, 24)
 use_bvar = st.sidebar.checkbox("Use BVAR (Bayesian shrinkage)", value=False)
 
@@ -210,7 +210,7 @@ with tab2:
     st.subheader("VAR Model Estimation")
 
     lag_choice = st.number_input("Number of lags",
-        min_value=1, max_value=8,
+        min_value=1, max_value=12,
         value=st.session_state.get("best_lag", 2))
 
     if st.button("⚙️ Fit VAR Model", type="primary"):

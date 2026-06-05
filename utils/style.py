@@ -125,50 +125,61 @@ def apply_global_style():
             border-right: 1px solid rgba(255,255,255,0.06);
         }
 
-        /* ── Sidebar navigation links (compact) ───────────────────────────── */
-        [data-testid="stSidebarNav"] {
-            padding-top: 4px;
-        }
-        [data-testid="stSidebarNav"] ul {
-            gap: 0px;
-            margin: 0;
-        }
-        [data-testid="stSidebarNav"] li {
-            margin: 0 !important;
-        }
-        [data-testid="stSidebarNav"] a {
-            border-radius: 8px;
-            padding: 6px 12px !important;
-            margin: 1px 8px !important;
-            min-height: 0 !important;
-            transition: background 0.15s ease, transform 0.1s ease;
-        }
-        [data-testid="stSidebarNav"] a:hover {
-            background: rgba(37,99,235,0.12) !important;
-            transform: translateX(2px);
-        }
-        [data-testid="stSidebarNav"] a span {
-            font-weight: 500;
-            font-size: 0.9rem;
-            line-height: 1.2 !important;
-        }
-        [data-testid="stSidebarNav"] a[aria-current="page"] {
-            background: linear-gradient(90deg, rgba(37,99,235,0.25), rgba(37,99,235,0.08)) !important;
-            border-left: 3px solid #2563EB;
-        }
-        [data-testid="stSidebarNav"] a[aria-current="page"] span {
-            font-weight: 700;
-            color: #FFFFFF;
-        }
-        [data-testid="stSidebarNav"]::before {
-            content: "NAVIGATION";
-            display: block;
-            padding: 4px 16px 2px;
-            font-size: 0.7rem;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            color: #64748B;
-        }
+        /* ── Sidebar navigation links (all blocks, cool colors) ───────────── */
+[data-testid="stSidebarNav"] {
+    padding-top: 4px;
+}
+[data-testid="stSidebarNav"] ul {
+    gap: 4px;
+    margin: 0;
+}
+[data-testid="stSidebarNav"] li {
+    margin: 0 !important;
+}
+/* Every nav item gets a block background */
+[data-testid="stSidebarNav"] a {
+    border-radius: 10px;
+    padding: 8px 14px !important;
+    margin: 2px 8px !important;
+    min-height: 0 !important;
+    background: rgba(30, 41, 59, 0.55);
+    border: 1px solid rgba(148, 163, 184, 0.10);
+    transition: all 0.18s ease;
+}
+[data-testid="stSidebarNav"] a:hover {
+    background: rgba(37, 99, 235, 0.18) !important;
+    border-color: rgba(96, 165, 250, 0.4);
+    transform: translateX(3px);
+}
+/* Cool slate-blue text for inactive items */
+[data-testid="stSidebarNav"] a span {
+    font-weight: 500;
+    font-size: 0.9rem;
+    line-height: 1.2 !important;
+    color: #A5B4CB !important;
+}
+[data-testid="stSidebarNav"] a:hover span {
+    color: #DBEAFE !important;
+}
+/* Active page — vibrant gradient + glow */
+[data-testid="stSidebarNav"] a[aria-current="page"] {
+    background: linear-gradient(135deg, #2563EB 0%, #6D28D9 100%) !important;
+    border: 1px solid rgba(147, 197, 253, 0.5);
+    box-shadow: 0 4px 16px rgba(37, 99, 235, 0.45);
+}
+[data-testid="stSidebarNav"] a[aria-current="page"] span {
+    font-weight: 700;
+    color: #FFFFFF !important;
+}
+[data-testid="stSidebarNav"]::before {
+    content: "NAVIGATION";
+    display: block;
+    padding: 4px 16px 6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: #60A5FA;
+}
 
         /* ── Hide Streamlit chrome & bottom band artifacts ────────────────── */
         #MainMenu { display: none !important; }
