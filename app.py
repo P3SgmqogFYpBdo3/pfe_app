@@ -2,6 +2,7 @@ import streamlit as st
 import sys, os
 sys.path.append(os.path.dirname(__file__))
 
+
 try:
     from utils.style import apply_global_style
 except Exception:
