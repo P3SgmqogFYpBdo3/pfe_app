@@ -1,39 +1,44 @@
+"""
+Data loader for the PFE application — Morocco only.
+
+Loads and validates the Morocco dataset with robust date parsing and
+BOM-safe CSV reading. Public function signatures are preserved so the
+existing pages continue to work unchanged.
+"""
+import os
 import pandas as pd
 import streamlit as st
-import os
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 
+# Single-country project.
 COUNTRIES = {
     "Morocco": "morocco.csv",
-    "Chile": "chile.csv",
-    "Turkey": "turkey.csv",
-    "Romania": "romania.csv",
-    "Peru": "peru.csv",
-    "Czech Republic": "czech_republic.csv",
 }
 
-REQUIRED_COLUMNS = [
-    "date", "cpi", "policy_rate", "neer", "reer",
-    "fx_usd", "fx_eur", "reserves", "oil_brent", "output_gap",
-]
-
+# Known columns (output_gap intentionally removed — not used in this project).
 COLUMN_LABELS = {
-    "cpi": "CPI (Inflation Index)",
+    "cpi":         "CPI (Inflation Index)",
     "policy_rate": "Policy Interest Rate (%)",
-    "neer": "NEER Index",
-    "reer": "REER Index",
-    "fx_usd": "MAD / USD",
-    "fx_eur": "MAD / EUR",
-    "reserves": "FX Reserves (USD billions)",
-    "oil_brent": "Brent Oil Price (USD)",
-    "output_gap": "Output Gap (% of GDP)",
+    "neer":        "NEER Index",
+    "reer":        "REER Index",
+    "fx_usd":      "MAD / USD",
+    "fx_eur":      "MAD / EUR",
+    "reserves":    "FX Reserves",
+    "oil_brent":   "Brent Oil Price (USD)",
 }
+
+CORE_COLUMNS = ["date", "cpi", "fx_eur"]          # minimum to run the app
+OPTIONAL_COLUMNS = ["fx_usd", "neer", "reer", "policy_rate", "reserves", "oil_brent"]
+
+# Backward-compatibility alias (some pages import this name).
+REQUIRED_COLUMNS = ["date"] + list(COLUMN_LABELS.keys())
 
 
 @st.cache_data(show_spinner=False)
-def load_country(country: str):
-    """Load and validate data for a single country with robust date parsing."""
+def load_country(country: str = "Morocco"):
+    """Load and clean the Morocco dataset. Returns a month-indexed DataFrame,
+    or None on failure."""
     filename = COUNTRIES.get(country)
     if not filename:
         return None
@@ -43,43 +48,43 @@ def load_country(country: str):
         return None
 
     try:
-        df = pd.read_csv(filepath)
+        # utf-8-sig strips a leading BOM if present (common from Excel exports).
+        df = pd.read_csv(filepath, encoding="utf-8-sig")
 
-        # Find date column case-insensitively
+        # ── Locate the date column case-insensitively ─────────────────────
         date_col = None
         for col in df.columns:
-            if col.lower().strip() == "date":
+            if str(col).lower().strip() == "date":
                 date_col = col
                 break
-
         if date_col is None:
             st.error(f"No 'date' column found in {filename}. "
-                     f"Columns found: {list(df.columns)}")
+                     f"Columns: {list(df.columns)}")
             return None
 
-        # Parse dates flexibly
-        df[date_col] = pd.to_datetime(df[date_col], dayfirst=False, errors="coerce")
-
-        # Rename to lowercase 'date' if needed
+        # ── Parse dates flexibly, drop unparseable rows ───────────────────
+        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
         if date_col != "date":
             df = df.rename(columns={date_col: "date"})
 
-        # Drop rows where date couldn't be parsed
         n_bad = df["date"].isna().sum()
         if n_bad > 0:
-            st.warning(f"{country}: {n_bad} rows with unparseable dates dropped.")
+            st.warning(f"{country}: {n_bad} row(s) with unparseable dates dropped.")
             df = df.dropna(subset=["date"])
-
         if len(df) == 0:
-            st.error(f"No valid dates in {filename}. Check format — expected YYYY-MM-DD.")
+            st.error(f"No valid dates in {filename} (expected YYYY-MM-DD).")
             return None
 
-        # Normalize to first of month
+        # ── Normalize to first-of-month and index ─────────────────────────
         df = df.sort_values("date")
         df["date"] = df["date"].dt.to_period("M").dt.to_timestamp()
-        df = df.set_index("date")
+        df = df.drop_duplicates(subset=["date"], keep="last").set_index("date")
 
-        # Convert all columns to numeric
+        # ── Drop output_gap if present (not used in this project) ──────────
+        if "output_gap" in df.columns:
+            df = df.drop(columns=["output_gap"])
+
+        # ── Coerce every remaining column to numeric ──────────────────────
         for col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
@@ -92,70 +97,73 @@ def load_country(country: str):
 
 @st.cache_data(show_spinner=False)
 def load_all_countries():
-    """Load all available country datasets."""
+    """Return {country: DataFrame} — single entry for Morocco."""
     result = {}
     for country in COUNTRIES:
-        df = load_country(country)
-        if df is not None:
-            result[country] = df
+        d = load_country(country)
+        if d is not None:
+            result[country] = d
     return result
 
 
 def get_available_countries():
-    """Return list of countries that have a CSV file in /data."""
-    available = []
-    for country, filename in COUNTRIES.items():
-        filepath = os.path.join(DATA_DIR, filename)
-        if os.path.exists(filepath):
-            available.append(country)
-    return available
+    """List countries that have a CSV present in /data (Morocco only)."""
+    return [c for c, f in COUNTRIES.items()
+            if os.path.exists(os.path.join(DATA_DIR, f))]
 
 
-def validate_dataframe(df, country):
-    """Validate a dataframe and return a report."""
+def validate_dataframe(df, country: str = "Morocco"):
+    """Return a validation report dict for the loaded dataframe."""
     report = {
         "country": country,
         "row_count": len(df),
-        "date_range": (df.index.min(), df.index.max()) if len(df) > 0 else (None, None),
-        "missing_cols": [],
+        "date_range": (df.index.min(), df.index.max()) if len(df) else (None, None),
+        "present_cols": [],
+        "missing_optional": [],
+        "missing_cols": [],          # backward-compat alias for older pages
         "missing_values": {},
+        "date_gaps": 0,
         "issues": [],
     }
 
-    for col in REQUIRED_COLUMNS:
-        if col != "date" and col not in df.columns:
+    for col in COLUMN_LABELS:
+        if col in df.columns:
+            report["present_cols"].append(col)
+        else:
+            report["missing_optional"].append(col)
             report["missing_cols"].append(col)
 
     for col in df.columns:
-        n_missing = df[col].isna().sum()
-        if n_missing > 0:
-            pct = round(n_missing / len(df) * 100, 1)
-            report["missing_values"][col] = {"count": n_missing, "pct": pct}
+        n = int(df[col].isna().sum())
+        if n > 0:
+            report["missing_values"][col] = {
+                "count": n, "pct": round(n / len(df) * 100, 1)}
 
-    if report["missing_cols"]:
-        report["issues"].append(f"Missing columns: {', '.join(report['missing_cols'])}")
+    if len(df) > 1:
+        expected = pd.date_range(df.index.min(), df.index.max(), freq="MS")
+        report["date_gaps"] = len(expected.difference(df.index))
+
+    missing_core = [c for c in CORE_COLUMNS if c != "date" and c not in df.columns]
+    if missing_core:
+        report["issues"].append(f"Missing core columns: {', '.join(missing_core)}")
     if len(df) < 60:
-        report["issues"].append("Less than 60 observations — models may be unreliable")
-    if report["missing_values"]:
-        high_missing = [c for c, v in report["missing_values"].items() if v["pct"] > 20]
-        if high_missing:
-            report["issues"].append(f"High missing values (>20%): {', '.join(high_missing)}")
+        report["issues"].append("Fewer than 60 observations — models may be unreliable.")
+    if report["date_gaps"] > 0:
+        report["issues"].append(f"{report['date_gaps']} missing month(s) in the date range.")
+    high_missing = [c for c, v in report["missing_values"].items() if v["pct"] > 20]
+    if high_missing:
+        report["issues"].append(f"High missing values (>20%): {', '.join(high_missing)}")
 
     return report
 
 
-def compute_returns(df, col):
-    """Compute log returns for a given column."""
-    import math
-    return (df[col] / df[col].shift(1)).apply(
-        lambda x: x if pd.isna(x) else math.log(x))
+def compute_returns(df, col: str):
+    """Log returns for a column (in %)."""
+    import numpy as np
+    return (np.log(df[col] / df[col].shift(1)) * 100)
 
 
-def sidebar_country_selector(default="Morocco"):
-    """Render a country selector in the sidebar."""
-    available = get_available_countries()
-    if not available:
-        st.sidebar.warning("No country data found. Please add CSV files to /data.")
-        return default
-    idx = available.index(default) if default in available else 0
-    return st.sidebar.selectbox("🌍 Select Country", available, index=idx)
+def sidebar_country_selector(default: str = "Morocco") -> str:
+    """Returns 'Morocco' silently. Kept for compatibility with all pages —
+    renders nothing in the sidebar since this is a single-country project."""
+    return "Morocco"
